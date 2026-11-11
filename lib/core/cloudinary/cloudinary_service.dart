@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -7,6 +8,19 @@ class CloudinaryService {
   final http.Client _client;
 
   CloudinaryService({http.Client? client}) : _client = client ?? http.Client();
+
+  /// Returns an optimized Cloudinary thumbnail URL (`f_auto,q_auto,w_<width>`)
+  /// for fast grid rendering and lower memory/bandwidth usage.
+  static String optimizedUrl(String url, {int width = 500}) {
+    const marker = '/image/upload/';
+    final idx = url.indexOf(marker);
+    if (idx == -1) return url;
+    final prefix = url.substring(0, idx + marker.length);
+    final suffix = url.substring(idx + marker.length);
+    // Avoid double-inserting transformations if already present
+    if (suffix.startsWith('f_auto')) return url;
+    return '${prefix}f_auto,q_auto,w_$width/$suffix';
+  }
 
   /// Uploads image [bytes] to Cloudinary (`duoajyqfd`) using signed upload
   /// (`api_key`, `timestamp`, `folder`, and SHA-1 `signature`) and returns
@@ -45,7 +59,9 @@ class CloudinaryService {
       ),
     );
 
-    final streamedResponse = await _client.send(request);
+    final streamedResponse = await _client
+        .send(request)
+        .timeout(const Duration(seconds: 30));
     final response = await http.Response.fromStream(streamedResponse);
 
     if (response.statusCode >= 200 && response.statusCode < 300) {

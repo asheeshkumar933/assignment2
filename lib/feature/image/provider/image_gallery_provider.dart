@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../../../core/firebase/firebase_config/firebase_config.dart';
@@ -8,11 +9,19 @@ import '../service/image_firebase_service.dart';
 class ImageGalleryProvider extends ChangeNotifier {
   final ImageFirebaseService _imageService = ImageFirebaseService();
   final List<ImageItemModel> _uploadedImages = [];
+  late final UnmodifiableListView<ImageItemModel> _unmodifiableImages =
+      UnmodifiableListView(_uploadedImages);
+
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _imagesSubscription;
   bool _isLoading = false;
   String? _errorMessage;
 
-  List<ImageItemModel> get uploadedImages => List.unmodifiable(_uploadedImages);
+  /// Cached unmodifiable view (zero allocation on read).
+  List<ImageItemModel> get uploadedImages => _unmodifiableImages;
+  int get itemCount => _uploadedImages.length;
+  ImageItemModel itemAt(int index) => _uploadedImages[index];
+  int indexOfId(String id) => _uploadedImages.indexWhere((e) => e.id == id);
+
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
@@ -36,8 +45,7 @@ class ImageGalleryProvider extends ChangeNotifier {
           final item = ImageItemModel.fromFirestore(change.doc);
           switch (change.type) {
             case DocumentChangeType.added:
-              final existingIdx =
-                  _uploadedImages.indexWhere((e) => e.id == item.id);
+              final existingIdx = indexOfId(item.id);
               if (existingIdx == -1) {
                 final insertIndex = change.newIndex
                     .clamp(0, _uploadedImages.length);
@@ -46,8 +54,7 @@ class ImageGalleryProvider extends ChangeNotifier {
               }
               break;
             case DocumentChangeType.modified:
-              final existingIdx =
-                  _uploadedImages.indexWhere((e) => e.id == item.id);
+              final existingIdx = indexOfId(item.id);
               if (existingIdx != -1) {
                 _uploadedImages[existingIdx] = item;
                 hasChanges = true;
@@ -113,9 +120,7 @@ class ImageGalleryProvider extends ChangeNotifier {
 
   /// Adds only the newly uploaded item at the top of the gallery.
   void addUploadedItem(ImageItemModel item) {
-    final existingIndex =
-        _uploadedImages.indexWhere((existing) => existing.id == item.id);
-    if (existingIndex != -1) {
+    if (indexOfId(item.id) != -1) {
       return;
     }
     _uploadedImages.insert(0, item);

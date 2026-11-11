@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -58,7 +59,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final homeProvider = context.watch<HomeProvider>();
+    final pickedBytes = context.select<HomeProvider, Uint8List?>(
+      (p) => p.pickedBytes,
+    );
+    final isUploading = context.select<HomeProvider, bool>(
+      (p) => p.isUploading,
+    );
+    final errorMessage = context.select<HomeProvider, String?>(
+      (p) => p.errorMessage,
+    );
+    final lastUploadedUrl = context.select<HomeProvider, String?>(
+      (p) => p.lastUploadedUrl,
+    );
+    final homeProvider = context.read<HomeProvider>();
+
     final cardWidth = Responsive.value<double>(
       context,
       mobile: Responsive.wp(context, 92),
@@ -108,13 +122,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       clipBehavior: Clip.antiAlias,
-                      child: homeProvider.pickedBytes != null
+                      child: pickedBytes != null
                           ? Stack(
                               fit: StackFit.expand,
                               children: [
                                 Image.memory(
-                                  homeProvider.pickedBytes!,
+                                  pickedBytes,
                                   fit: BoxFit.cover,
+                                  gaplessPlayback: true,
                                   errorBuilder: (context, error, stackTrace) =>
                                       const Center(
                                     child: Icon(Icons.image_outlined, size: 48),
@@ -124,7 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   top: 8,
                                   right: 8,
                                   child: IconButton.filledTonal(
-                                    onPressed: homeProvider.isUploading
+                                    onPressed: isUploading
                                         ? null
                                         : homeProvider.clearSelectedImage,
                                     icon: const Icon(Icons.close),
@@ -156,9 +171,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                     ),
                     const SizedBox(height: 16),
-                    if (homeProvider.errorMessage != null) ...[
+                    if (errorMessage != null) ...[
                       Text(
-                        homeProvider.errorMessage!,
+                        errorMessage,
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.error,
                         ),
@@ -170,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         Expanded(
                           child: OutlinedButton.icon(
-                            onPressed: homeProvider.isUploading
+                            onPressed: isUploading
                                 ? null
                                 : () => homeProvider.pickImage(
                                       ImageSource.gallery,
@@ -182,7 +197,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: OutlinedButton.icon(
-                            onPressed: homeProvider.isUploading
+                            onPressed: isUploading
                                 ? null
                                 : () => homeProvider.pickImage(
                                       ImageSource.camera,
@@ -196,7 +211,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 16),
                     TextField(
                       controller: _titleController,
-                      enabled: !homeProvider.isUploading,
+                      enabled: !isUploading,
                       decoration: InputDecoration(
                         labelText: 'Image Caption / Title (optional)',
                         prefixIcon: const Icon(Icons.title),
@@ -207,11 +222,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 20),
                     FilledButton.icon(
-                      onPressed: (homeProvider.pickedBytes == null ||
-                              homeProvider.isUploading)
+                      onPressed: (pickedBytes == null || isUploading)
                           ? null
                           : () => _handleUpload(context),
-                      icon: homeProvider.isUploading
+                      icon: isUploading
                           ? const SizedBox(
                               width: 18,
                               height: 18,
@@ -221,13 +235,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             )
                           : const Icon(Icons.cloud_upload),
                       label: Text(
-                        homeProvider.isUploading
-                            ? 'Uploading...'
-                            : 'Upload Image',
+                        isUploading ? 'Uploading...' : 'Upload Image',
                       ),
                     ),
-                    if (homeProvider.lastUploadedUrl != null &&
-                        homeProvider.lastUploadedUrl!.isNotEmpty) ...[
+                    if (lastUploadedUrl != null &&
+                        lastUploadedUrl.isNotEmpty) ...[
                       const SizedBox(height: 16),
                       Container(
                         padding: const EdgeInsets.all(10),
@@ -250,7 +262,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             const SizedBox(height: 4),
                             SelectableText(
-                              homeProvider.lastUploadedUrl!,
+                              lastUploadedUrl,
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ],
@@ -267,4 +279,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-

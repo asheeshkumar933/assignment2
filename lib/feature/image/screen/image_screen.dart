@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../core/cloudinary/cloudinary_service.dart';
 import '../../../utils/responsive.dart';
 import '../model/image_item_model.dart';
 import '../provider/image_gallery_provider.dart';
@@ -20,7 +21,7 @@ class ImageScreen extends StatelessWidget {
       (p) => p.isLoading,
     );
     final itemCount = context.select<ImageGalleryProvider, int>(
-      (p) => p.uploadedImages.length,
+      (p) => p.itemCount,
     );
 
     return Scaffold(
@@ -81,6 +82,7 @@ class ImageScreen extends StatelessWidget {
                 : GridView.builder(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: Responsive.screenPadding(context),
+                    cacheExtent: 600,
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: crossAxisCount,
                       crossAxisSpacing: 12,
@@ -90,32 +92,23 @@ class ImageScreen extends StatelessWidget {
                     itemCount: itemCount,
                     findChildIndexCallback: (Key key) {
                       if (key is ValueKey<String>) {
-                        final images = context
+                        final index = context
                             .read<ImageGalleryProvider>()
-                            .uploadedImages;
-                        final index =
-                            images.indexWhere((item) => item.id == key.value);
+                            .indexOfId(key.value);
                         return index != -1 ? index : null;
                       }
                       return null;
                     },
                     itemBuilder: (context, index) {
-                      final item = context
-                          .read<ImageGalleryProvider>()
-                          .uploadedImages[index];
+                      final provider = context.read<ImageGalleryProvider>();
+                      final item = provider.itemAt(index);
                       return _ImageGridCard(
                         key: ValueKey<String>(item.id),
                         item: item,
                         onDelete: () {
-                          final currentImages = context
-                              .read<ImageGalleryProvider>()
-                              .uploadedImages;
-                          final currentIdx = currentImages
-                              .indexWhere((e) => e.id == item.id);
+                          final currentIdx = provider.indexOfId(item.id);
                           if (currentIdx != -1) {
-                            context
-                                .read<ImageGalleryProvider>()
-                                .removeImageAt(currentIdx);
+                            provider.removeImageAt(currentIdx);
                           }
                         },
                       );
@@ -175,7 +168,12 @@ class _ImageGridCardState extends State<_ImageGridCard>
                 ),
                 Flexible(
                   child: InteractiveViewer(
-                    child: _buildImageWidget(context, item, BoxFit.contain),
+                    child: _buildImageWidget(
+                      context,
+                      item,
+                      BoxFit.contain,
+                      isThumbnail: false,
+                    ),
                   ),
                 ),
                 Padding(
@@ -212,13 +210,35 @@ class _ImageGridCardState extends State<_ImageGridCard>
   Widget _buildImageWidget(
     BuildContext context,
     ImageItemModel item,
-    BoxFit fit,
-  ) {
+    BoxFit fit, {
+    required bool isThumbnail,
+  }) {
     if (item.imageUrl != null && item.imageUrl!.isNotEmpty) {
+      final targetUrl = isThumbnail
+          ? CloudinaryService.optimizedUrl(item.imageUrl!, width: 500)
+          : item.imageUrl!;
+
       return Image.network(
-        item.imageUrl!,
+        targetUrl,
         fit: fit,
+        cacheWidth: isThumbnail ? 500 : null,
         gaplessPlayback: true,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Center(
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                        loadingProgress.expectedTotalBytes!
+                    : null,
+              ),
+            ),
+          );
+        },
         errorBuilder: (context, error, stackTrace) {
           if (item.bytes != null) {
             return Image.memory(
@@ -237,6 +257,7 @@ class _ImageGridCardState extends State<_ImageGridCard>
       return Image.memory(
         item.bytes!,
         fit: fit,
+        cacheWidth: isThumbnail ? 500 : null,
         gaplessPlayback: true,
         errorBuilder: (context, error, stackTrace) => _brokenImage(context),
       );
@@ -274,7 +295,12 @@ class _ImageGridCardState extends State<_ImageGridCard>
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    _buildImageWidget(context, item, BoxFit.cover),
+                    _buildImageWidget(
+                      context,
+                      item,
+                      BoxFit.cover,
+                      isThumbnail: true,
+                    ),
                     Positioned(
                       top: 6,
                       right: 6,
