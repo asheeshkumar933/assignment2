@@ -1,23 +1,20 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../../../core/firebase/firebase_config/firebase_config.dart';
 import '../model/image_item_model.dart';
 
 class ImageFirebaseService {
-  // Real-time stream of uploaded images from Cloud Firestore (commented out for now, using get below):
-  // Stream<List<ImageItemModel>> watchImagesFromFirebase() {
-  //   if (!FirebaseConfig.isReady) {
-  //     return const Stream<List<ImageItemModel>>.empty();
-  //   }
-  //
-  //   return FirebaseConfig.imagesCollection
-  //       .orderBy('createdAt', descending: true)
-  //       .snapshots()
-  //       .map(
-  //         (snapshot) => snapshot.docs
-  //             .map((doc) => ImageItemModel.fromFirestore(doc))
-  //             .toList(),
-  //       );
-  // }
+  /// Real-time stream of Firestore query snapshots for incremental updates
+  /// (so only newly added/removed documents are processed).
+  Stream<QuerySnapshot<Map<String, dynamic>>> watchImageChangesFromFirebase() {
+    if (!FirebaseConfig.isReady) {
+      return const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
+    }
+
+    return FirebaseConfig.imagesCollection
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+  }
 
   /// Gets all uploaded images from Firebase Cloud Firestore ordered by `createdAt`.
   Future<List<ImageItemModel>> getImagesFromFirebase() async {

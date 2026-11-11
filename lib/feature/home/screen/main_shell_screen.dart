@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import '../../image/provider/image_gallery_provider.dart';
 import '../provider/home_provider.dart';
 
 class MainShellScreen extends StatelessWidget {
@@ -14,10 +13,6 @@ class MainShellScreen extends StatelessWidget {
 
   void _onTap(BuildContext context, int index) {
     context.read<HomeProvider>().setIndex(index);
-    // When user visits the Image tab (index == 1), fetch latest images via get()
-    if (index == 1) {
-      context.read<ImageGalleryProvider>().loadImages();
-    }
     navigationShell.goBranch(
       index,
       initialLocation: index == navigationShell.currentIndex,

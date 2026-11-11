@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../../../core/firebase/firebase_config/firebase_config.dart';
 import '../model/image_item_model.dart';
@@ -6,7 +8,7 @@ import '../service/image_firebase_service.dart';
 class ImageGalleryProvider extends ChangeNotifier {
   final ImageFirebaseService _imageService = ImageFirebaseService();
   final List<ImageItemModel> _uploadedImages = [];
-  // StreamSubscription<List<ImageItemModel>>? _imagesSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _imagesSubscription;
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -14,47 +16,92 @@ class ImageGalleryProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  // Real-time Firestore stream implementation (commented out as requested):
-  // Stream<List<ImageItemModel>> get imagesStream =>
-  //     _imageService.watchImagesFromFirebase();
-  //
-  // void initRealtimeImages() {
-  //   if (!FirebaseConfig.isReady) return;
-  //
-  //   _isLoading = true;
-  //   _errorMessage = null;
-  //   notifyListeners();
-  //
-  //   _imagesSubscription?.cancel();
-  //   _imagesSubscription = _imageService.watchImagesFromFirebase().listen(
-  //     (remoteImages) {
-  //       _uploadedImages
-  //         ..clear()
-  //         ..addAll(remoteImages);
-  //       _isLoading = false;
-  //       _errorMessage = null;
-  //       notifyListeners();
-  //     },
-  //     onError: (Object error) {
-  //       _errorMessage = 'Real-time sync error: $error';
-  //       _isLoading = false;
-  //       notifyListeners();
-  //     },
-  //   );
-  // }
+  /// Subscribes to real-time Firestore `docChanges` so only newly added,
+  /// modified, or removed images update the list without rebuilding all items.
+  void initRealtimeImages() {
+    if (!FirebaseConfig.isReady) return;
 
-  /// Fetches images from Firestore using one-time `get()` when visiting the Image tab.
-  Future<void> loadImages() async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
+    if (_uploadedImages.isEmpty) {
+      _isLoading = true;
+      notifyListeners();
+    }
+
+    _imagesSubscription?.cancel();
+    _imagesSubscription =
+        _imageService.watchImageChangesFromFirebase().listen(
+      (snapshot) {
+        bool hasChanges = false;
+
+        for (final change in snapshot.docChanges) {
+          final item = ImageItemModel.fromFirestore(change.doc);
+          switch (change.type) {
+            case DocumentChangeType.added:
+              final existingIdx =
+                  _uploadedImages.indexWhere((e) => e.id == item.id);
+              if (existingIdx == -1) {
+                final insertIndex = change.newIndex
+                    .clamp(0, _uploadedImages.length);
+                _uploadedImages.insert(insertIndex, item);
+                hasChanges = true;
+              }
+              break;
+            case DocumentChangeType.modified:
+              final existingIdx =
+                  _uploadedImages.indexWhere((e) => e.id == item.id);
+              if (existingIdx != -1) {
+                _uploadedImages[existingIdx] = item;
+                hasChanges = true;
+              }
+              break;
+            case DocumentChangeType.removed:
+              final beforeLen = _uploadedImages.length;
+              _uploadedImages.removeWhere((e) => e.id == item.id);
+              if (_uploadedImages.length != beforeLen) {
+                hasChanges = true;
+              }
+              break;
+          }
+        }
+
+        if (_isLoading || hasChanges) {
+          _isLoading = false;
+          _errorMessage = null;
+          notifyListeners();
+        }
+      },
+      onError: (Object error) {
+        if (kDebugMode) {
+          debugPrint('Real-time sync error: $error');
+        }
+        _errorMessage = 'Real-time sync error: $error';
+        _isLoading = false;
+        notifyListeners();
+      },
+    );
+  }
+
+  /// Pull-to-refresh handler: fetches from Firestore without clearing existing
+  /// items or showing a full-screen loader, merging only new/removed items.
+  Future<void> loadImages({bool showFullScreenLoader = false}) async {
+    if (showFullScreenLoader && _uploadedImages.isEmpty) {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+    }
 
     try {
       final remoteImages = await _imageService.getImagesFromFirebase();
       if (remoteImages.isNotEmpty || FirebaseConfig.isReady) {
+        final existingById = {
+          for (final item in _uploadedImages) item.id: item,
+        };
+        final merged = remoteImages
+            .map((remote) => existingById[remote.id] ?? remote)
+            .toList();
+
         _uploadedImages
           ..clear()
-          ..addAll(remoteImages);
+          ..addAll(merged);
       }
     } catch (e) {
       _errorMessage = 'Failed to load images from Firebase: $e';
@@ -64,8 +111,11 @@ class ImageGalleryProvider extends ChangeNotifier {
     }
   }
 
+  /// Adds only the newly uploaded item at the top of the gallery.
   void addUploadedItem(ImageItemModel item) {
-    if (_uploadedImages.any((existing) => existing.id == item.id)) {
+    final existingIndex =
+        _uploadedImages.indexWhere((existing) => existing.id == item.id);
+    if (existingIndex != -1) {
       return;
     }
     _uploadedImages.insert(0, item);
@@ -87,9 +137,9 @@ class ImageGalleryProvider extends ChangeNotifier {
     }
   }
 
-  // @override
-  // void dispose() {
-  //   _imagesSubscription?.cancel();
-  //   super.dispose();
-  // }
+  @override
+  void dispose() {
+    _imagesSubscription?.cancel();
+    super.dispose();
+  }
 }

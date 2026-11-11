@@ -15,9 +15,7 @@ Future<void> main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => HomeProvider()),
         ChangeNotifierProvider(
-          create: (_) => ImageGalleryProvider()
-            // ..initRealtimeImages() // Stream commented out; using get() via loadImages()
-            ..loadImages(),
+          create: (_) => ImageGalleryProvider()..initRealtimeImages(),
         ),
       ],
       child: const MyApp(),
